@@ -1,4 +1,4 @@
-//ƒvƒ‰ƒOƒCƒ“‚Ìƒtƒ@ƒCƒ‹–¼‚ÍAuPlugin_*.dllv‚Æ‚¢‚¤Œ`®‚É‚µ‚Ä‰º‚³‚¢B
+//ãƒ—ãƒ©ã‚°ã‚¤ãƒ³ã®ãƒ•ã‚¡ã‚¤ãƒ«åã¯ã€ã€ŒPlugin_*.dllã€ã¨ã„ã†å½¢å¼ã«ã—ã¦ä¸‹ã•ã„ã€‚
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -18,119 +18,178 @@ using System.Security.Cryptography;
 
 namespace Plugin_WebSocket {
     public class Plugin_WebSocket : IPlugin {
-        #region ¡ƒtƒB[ƒ‹ƒh
+
+        #region â– ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰
+        private string _path = Base.CallAsmPath + Base.CallAsmName + ".setting";
+        private PluginSettings _settings;
+        private SettingFormData _settingFormData;
+        private int _currentPort;
+        private Accept _wsAccept;
         #endregion
 
 
-        #region ¡IPluginƒƒ“ƒo‚ÌÀ‘•
+        #region â– IPluginãƒ¡ãƒ³ãƒã®å®Ÿè£…
 
-        public string           Name            { get { return "WebSocketƒT[ƒo["; } }
-        public string           Version         { get { return "2013/05/15”Å"; } }
-        public string           Caption         { get { return "WebSocket‚©‚ç‚Ì“Ç‚İã‚°ƒŠƒNƒGƒXƒg‚ğó‚¯•t‚¯‚Ü‚·B"; } } 
-        public ISettingFormData SettingFormData { get { return null/*_SettingFormData*/; } } //ƒvƒ‰ƒOƒCƒ“‚Ìİ’è‰æ–Êî•ñiİ’è‰æ–Ê‚ª•K—v‚È‚¯‚ê‚Înull‚ğ•Ô‚µ‚Ä‚­‚¾‚³‚¢j
+        public string           Name            { get { return "WebSocketã‚µãƒ¼ãƒãƒ¼"; } }
+        public string           Version         { get { return "2013/05/15ç‰ˆ"; } }
+        public string           Caption         { get { return "WebSocketã‹ã‚‰ã®èª­ã¿ä¸Šã’ãƒªã‚¯ã‚¨ã‚¹ãƒˆã‚’å—ã‘ä»˜ã‘ã¾ã™ã€‚"; } } 
+        public ISettingFormData SettingFormData { get { return _settingFormData; } }
 
-
-        Accept wsAccept;
-
-        //ƒvƒ‰ƒOƒCƒ“ŠJnˆ—
+        //ãƒ—ãƒ©ã‚°ã‚¤ãƒ³é–‹å§‹æ™‚å‡¦ç†
         public void Begin() {
-            wsAccept = new Accept(50002);
-            wsAccept.Start();
+            // è¨­å®šãƒ•ã‚¡ã‚¤ãƒ«ã‚’èª­ã¿è¾¼ã‚€
+            _settings = new PluginSettings();
+            if (File.Exists(_path)) _settings.Load(_path);
+
+            // ç¾åœ¨ã®ãƒãƒ¼ãƒˆç•ªå·ã‚’è¨˜æ†¶
+            _currentPort = _settings.Port;
+
+            // è¨­å®šç”»é¢ã®åˆæœŸåŒ–
+            _settingFormData = new SettingFormData(_settings);
+
+            // ã‚µãƒ¼ãƒãƒ¼èµ·å‹•
+            StartServer();
         }
 
-        //ƒvƒ‰ƒOƒCƒ“I—¹ˆ—
+        //ãƒ—ãƒ©ã‚°ã‚¤ãƒ³çµ‚äº†æ™‚å‡¦ç†
         public void End() {
-            wsAccept.Stop();
+            if (_wsAccept != null) {
+                _wsAccept.Stop();
+                _wsAccept = null;
+            }
+            _settings.Save(this._path);
+        }
+
+
+        // ã‚µãƒ¼ãƒãƒ¼ã‚’èµ·å‹•
+        private void StartServer() {
+            if (_wsAccept != null) {
+                _wsAccept.Stop();
+                _wsAccept = null;
+            }
+
+            _wsAccept = new Accept(_settings.Port);
+            _wsAccept.Start();
+        }
+
+        // ã‚µãƒ¼ãƒãƒ¼ã‚’å†èµ·å‹•
+        private void RestartServer() {
+            StartServer();
         }
 
         #endregion
 
-
-
-        // ó•tƒNƒ‰ƒX
-        class Accept
-        {
+        // å—ä»˜ã‚¯ãƒ©ã‚¹
+        class Accept {
             private int mPort;
             public bool active = true;
             Thread thread;
             Socket server;
 
-            // ƒRƒ“ƒXƒgƒ‰ƒNƒ^
-            public Accept(int port)
-            {
+            // ã‚³ãƒ³ã‚¹ãƒˆãƒ©ã‚¯ã‚¿
+            public Accept(int port) {
                 mPort = port;
             }
 
-            public void Start()
-            {
-                thread = new Thread(Run);
-                Pub.AddTalkTask("ƒ\ƒPƒbƒgó•t‚ğŠJn‚µ‚Ü‚µ‚½B", -1, -1, VoiceType.Default);
+            public void Start() {
+                thread = new Thread(new ThreadStart(Run));
+                Pub.AddTalkTask("ãƒãƒ¼ãƒˆ" + mPort + "ã§ã‚½ã‚±ãƒƒãƒˆå—ä»˜ã‚’é–‹å§‹ã—ã¾ã—ãŸã€‚", -1, -1, VoiceType.Default);
                 thread.Start();
             }
 
-            public void Stop()
-            {
+            public void Stop() {
                 active = false;
-                server.Close();
-                thread.Abort();
-                Pub.AddTalkTask("ƒ\ƒPƒbƒgó•t‚ğI—¹‚µ‚Ü‚µ‚½B", -1, -1, VoiceType.Default);
+                if (server != null) {
+                    try {
+                        server.Close();
+                    }
+                    catch {
+                        // ã‚¨ãƒ©ãƒ¼ã¯ç„¡è¦–
+                    }
+                }
+                if (thread != null && thread.IsAlive) {
+                    try {
+                        thread.Abort();
+                    }
+                    catch {
+                        // ã‚¨ãƒ©ãƒ¼ã¯ç„¡è¦–
+                    }
+                }
+                Pub.AddTalkTask("ã‚½ã‚±ãƒƒãƒˆå—ä»˜ã‚’çµ‚äº†ã—ã¾ã—ãŸã€‚", -1, -1, VoiceType.Default);
             }
 
-            private void Run()
-            {
-                // ƒT[ƒo[ƒ\ƒPƒbƒg‰Šú‰»
-                server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                IPAddress ip = IPAddress.Parse("0.0.0.0");
-                IPEndPoint ipEndPoint = new IPEndPoint(ip, mPort);
+            private void Run() {
+                try {
+                    // ãƒãƒ¼ãƒˆãŒä½¿ç”¨å¯èƒ½ã‹ãƒã‚§ãƒƒã‚¯
+                    using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)) {
+                        socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                        socket.Bind(new IPEndPoint(IPAddress.Any, mPort));
+                        socket.Close();
+                    }
 
-                server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, 1);
-                server.Bind(ipEndPoint);
-                server.Listen(5);
+                    // å…ƒã®ã‚µãƒ¼ãƒãƒ¼èµ·å‹•ã‚³ãƒ¼ãƒ‰
+                    server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    server.Bind(new IPEndPoint(IPAddress.Any, mPort));
+                    server.Listen(10);
+                }
+                catch (SocketException ex) {
+                    MessageBox.Show("ã‚µãƒ¼ãƒãƒ¼ã®èµ·å‹•ã«å¤±æ•—ã—ã¾ã—ãŸã€‚\nãƒãƒ¼ãƒˆ" + mPort + "ãŒæ—¢ã«ä½¿ç”¨ã•ã‚Œã¦ã„ã‚‹ã‹ã€ã‚¢ã‚¯ã‚»ã‚¹æ¨©é™ãŒã‚ã‚Šã¾ã›ã‚“ã€‚\n\nã‚¨ãƒ©ãƒ¼è©³ç´°: " + ex.Message, 
+                        "ã‚¨ãƒ©ãƒ¼", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    throw;
+                }
 
-                // —v‹‘Ò‚¿i–³ŒÀƒ‹[ƒvj
-                while (active)
-                {
-                    Socket client = server.Accept();
-                    Response response = new Response(client);
-                    response.Start();
+                // è¦æ±‚å¾…ã¡ï¼ˆç„¡é™ãƒ«ãƒ¼ãƒ—ï¼‰
+                while (active) {
+                    try {
+                        Socket client = server.Accept();
+                        Response response = new Response(client);
+                        response.Start();
+                    }
+                    catch (Exception) {
+                        if (active) {
+                            // ã‚¢ã‚¯ãƒ†ã‚£ãƒ–ãªçŠ¶æ…‹ã§ã‚¨ãƒ©ãƒ¼ãŒç™ºç”Ÿã—ãŸå ´åˆã¯å°‘ã—å¾…æ©Ÿ
+                            Thread.Sleep(1000);
+                        }
+                        else {
+                            // éã‚¢ã‚¯ãƒ†ã‚£ãƒ–ãªã‚‰ãƒ«ãƒ¼ãƒ—ã‚’æŠœã‘ã‚‹
+                            break;
+                        }
+                    }
                 }
             }
         }
 
 
-        // ‰“šƒNƒ‰ƒX
-        class Response
-        {
-            enum STATUS
-            {
-                CHECKING,   // ’²¸’†
+        // å¿œç­”ã‚¯ãƒ©ã‚¹
+        class Response {
+            enum STATUS {
+                CHECKING,   // èª¿æŸ»ä¸­
                 OK,         // OK
                 ERROR,      // ERROR
             };
 
             private Socket mClient;
             private STATUS mStatus;
+            private Thread thread;
 
-            // ƒRƒ“ƒXƒgƒ‰ƒNƒ^
-            public Response(Socket client)
-            {
+            // ã‚³ãƒ³ã‚¹ãƒˆãƒ©ã‚¯ã‚¿
+            public Response(Socket client) {
                 mClient = client;
                 mStatus = STATUS.CHECKING;
             }
 
-            // ‰“šŠJn
-            public void Start()
-            {
-                Thread thread = new Thread(Run);
+            // é–‹å§‹
+            public void Start() {
+                thread = new Thread(new ThreadStart(Run));
                 thread.Start();
             }
 
-            // ‰“šÀs
+            // å¿œç­”å®Ÿè¡Œ
             private void Run()
             {
                 try
                 {
-                    // —v‹óM
+                    // è¦æ±‚å—ä¿¡
                     int bsize = mClient.ReceiveBufferSize;
                     byte[] buffer = new byte[bsize];
                     int recvLen = mClient.Receive(buffer);
@@ -139,9 +198,9 @@ namespace Plugin_WebSocket {
                         return;
 
                     String header = Encoding.ASCII.GetString(buffer, 0, recvLen);
-                    Console.WriteLine("y" + System.DateTime.Now + "z\n" + header);
+                    Console.WriteLine("ã€" + System.DateTime.Now + "ã€‘\n" + header);
 
-                    // —v‹URLŠm”F • ‰“š“à—e¶¬
+                    // è¦æ±‚URLç¢ºèª ï¼† å¿œç­”å†…å®¹ç”Ÿæˆ
                     int pos = header.IndexOf("GET / HTTP/");
 
                     if (mStatus == STATUS.CHECKING && 0 == pos)
@@ -160,21 +219,20 @@ namespace Plugin_WebSocket {
                 }
             }
 
-            // WebSocketƒƒCƒ“
-            private void doWebSocketMain(String header)
-            {
+            // WebSocketãƒ¡ã‚¤ãƒ³
+            private void doWebSocketMain(String header) {
                 String key = "Sec-WebSocket-Key: ";
                 int pos = header.IndexOf(key);
                 if (pos < 0) return;
 
-                // "Sec-WebSocket-Accept"‚Éİ’è‚·‚é•¶š—ñ‚ğ¶¬
+                // "Sec-WebSocket-Accept"ã«è¨­å®šã™ã‚‹æ–‡å­—åˆ—ã‚’ç”Ÿæˆ
                 String value = header.Substring(pos + key.Length, (header.IndexOf("\r\n", pos) - (pos + key.Length)));
                 byte[] byteValue = Encoding.UTF8.GetBytes(value + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
                 SHA1 crypto = new SHA1CryptoServiceProvider();
                 byte[] hash = crypto.ComputeHash(byteValue);
                 String resValue = Convert.ToBase64String(hash);
 
-                // ‰“š“à—e‘—M
+                // å¿œç­”å†…å®¹é€ä¿¡
                 byte[] buffer = Encoding.UTF8.GetBytes(
                     "HTTP/1.1 101 OK\r\n" +
                     "Upgrade: websocket\r\n" +
@@ -184,12 +242,12 @@ namespace Plugin_WebSocket {
 
                 mClient.Send(buffer);
 
-                // ƒNƒ‰ƒCƒAƒ“ƒg‚©‚çƒeƒLƒXƒg‚ğóM
+                // ã‚¯ãƒ©ã‚¤ã‚¢ãƒ³ãƒˆã‹ã‚‰ãƒ†ã‚­ã‚¹ãƒˆã‚’å—ä¿¡
                 int bsize = mClient.ReceiveBufferSize;
                 byte[] request = new byte[bsize];
                 mClient.Receive(request);
 
-                // ƒ}ƒXƒN‰ğœ
+                // ãƒã‚¹ã‚¯è§£é™¤
                 Int64 payloadLen = request[1] & 0x7F;
                 bool masked = ((request[1] & 0x80) == 0x80);
                 int hp = 2;
@@ -209,7 +267,7 @@ namespace Plugin_WebSocket {
                     hp += 4;
                 }
 
-                // ó‚¯æ‚Á‚½ƒŠƒNƒGƒXƒg‚Ì‰ğÍ
+                // å—ã‘å–ã£ãŸãƒªã‚¯ã‚¨ã‚¹ãƒˆã®è§£æ
                 String fromClient = Encoding.UTF8.GetString(request, hp, (int)payloadLen);
                 
                 String[] delim = { "<bouyomi>" };
@@ -217,8 +275,7 @@ namespace Plugin_WebSocket {
                 VoiceType vt = VoiceType.Default;
                 if (param.Length == 5)
                 {
-                    switch (int.Parse(param[3]))
-	                {
+                    switch (int.Parse(param[3])) {
                         case 0: vt = VoiceType.Default; break;
                         case 1: vt = VoiceType.Female1; break;
                         case 2: vt = VoiceType.Female2; break;
@@ -229,10 +286,10 @@ namespace Plugin_WebSocket {
                         case 7: vt = VoiceType.Machine1; break;
                         case 8: vt = VoiceType.Machine2; break;
                         default: vt = (VoiceType)int.Parse(param[3]); break;
-	                }
+                    }
                 }
 
-                // “Ç‚İã‚°
+                // èª­ã¿ä¸Šã’
                 Pub.AddTalkTask(param[4], int.Parse(param[0]), int.Parse(param[1]), int.Parse(param[2]), vt);
                 
             }

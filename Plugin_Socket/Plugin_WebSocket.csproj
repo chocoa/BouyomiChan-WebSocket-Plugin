@@ -55,7 +55,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="BouyomiChan">
-      <HintPath>C:\tools\棒読みちゃん\BouyomiChan.exe</HintPath>
+      <HintPath>C:\tools\Accesary\棒読みちゃん\BouyomiChan.exe</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Drawing" />
@@ -64,6 +64,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Plugin_WebSocket.cs" />
+    <Compile Include="PluginSettings.cs" />
+    <Compile Include="SettingFormData.cs" />
+    <Compile Include="SettingPropertyGrid.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
