@@ -39,10 +39,15 @@ namespace Plugin_WebSocket {
         public void Begin() {
             // 設定ファイルを読み込む
             _settings = new PluginSettings();
-            if (File.Exists(_path)) _settings.Load(_path);
+            if (File.Exists(_path)) {
+                _settings.Load(_path);
+            }
 
             // 現在のポート番号を記憶
             _currentPort = _settings.Port;
+
+            // ポート番号変更イベントを登録
+            _settings.PortChanged += new EventHandler(Settings_PortChanged);
 
             // 設定画面の初期化
             _settingFormData = new SettingFormData(_settings);
@@ -60,6 +65,15 @@ namespace Plugin_WebSocket {
             _settings.Save(this._path);
         }
 
+        // ポート番号変更イベントハンドラ
+        private void Settings_PortChanged(object sender, EventArgs e) {
+            // ポート番号が変更されていたらサーバーを再起動
+            if (_settings.Port != _currentPort) {
+                Pub.AddTalkTask("ポート番号が" + _currentPort + "から" + _settings.Port + "に変更されました。サーバーを再起動します。", -1, -1, VoiceType.Default);
+                _currentPort = _settings.Port;
+                RestartServer();
+            }
+        }
 
         // サーバーを起動
         private void StartServer() {

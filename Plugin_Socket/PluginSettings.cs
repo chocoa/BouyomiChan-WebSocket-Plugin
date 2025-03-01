@@ -7,11 +7,43 @@ namespace Plugin_WebSocket {
     /// WebSocketプラグインの設定を管理するクラス
     /// </summary>
     public class PluginSettings : SettingsBase {
-        public int Port;
+        private int _port;
+        
+        // ポート番号が変更されたときに発生するイベント
+        public event EventHandler PortChanged;
+        
+        // ポート番号
+        public int Port {
+            get { return _port; }
+            set { 
+                if (_port != value) {
+                    int oldPort = _port;
+                    _port = value;
+                    // ポート番号が変更されたらイベントを発生
+                    if (PortChanged != null) {
+                        PortChanged(this, EventArgs.Empty);
+                    }
+                }
+            }
+        }
 
         // コンストラクタ
         public PluginSettings() {
-            Port = 55000; // デフォルトポート
+            _port = 55000; // デフォルトポート
+        }
+
+        /// <summary>
+        /// 設定フォームが閉じられたときに呼ばれる
+        /// </summary>
+        public override void OnSettingFormClosed(FNF.XmlSerializerSetting.SettingForm.CloseKind closeKind) {
+            base.OnSettingFormClosed(closeKind);
+            // OKボタンで閉じられた場合のみ処理
+            if (closeKind == FNF.XmlSerializerSetting.SettingForm.CloseKind.OK) {
+                // ポート番号が変更されていたらイベントを発生
+                if (PortChanged != null) {
+                    PortChanged(this, EventArgs.Empty);
+                }
+            }
         }
 
         /// <summary>
