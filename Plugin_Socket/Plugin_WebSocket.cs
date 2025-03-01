@@ -271,71 +271,92 @@ namespace Plugin_WebSocket {
                     // JSONデータをパース
                     Dictionary<string, object> jsonData = ParseJson(jsonText);
 
-                    // 各パラメータを取得
-                    int speed = -1;
-                    int pitch = -1;
-                    int volume = -1;
-                    int voiceType = 0;
-                    string text = string.Empty;
-
-                    if (jsonData.ContainsKey("speed")) {
-                        speed = Convert.ToInt32(jsonData["speed"]);
-                    }
-                    if (jsonData.ContainsKey("pitch")) {
-                        pitch = Convert.ToInt32(jsonData["pitch"]);
-                    }
-                    if (jsonData.ContainsKey("volume")) {
-                        volume = Convert.ToInt32(jsonData["volume"]);
-                    }
-                    if (jsonData.ContainsKey("voiceType")) {
-                        voiceType = Convert.ToInt32(jsonData["voiceType"]);
-                    }
-                    if (jsonData.ContainsKey("text")) {
-                        text = jsonData["text"].ToString();
+                    // コマンドタイプを取得
+                    string command = "talk"; // デフォルトは読み上げ
+                    if (jsonData.ContainsKey("command")) {
+                        command = jsonData["command"].ToString().ToLower();
                     }
 
-                    // VoiceTypeを設定
-                    VoiceType vt = VoiceType.Default;
-                    switch (voiceType) {
-                        case 0: vt = VoiceType.Default; break;
-                        case 1: vt = VoiceType.Female1; break;
-                        case 2: vt = VoiceType.Female2; break;
-                        case 3: vt = VoiceType.Male1; break;
-                        case 4: vt = VoiceType.Male2; break;
-                        case 5: vt = VoiceType.Imd1; break;
-                        case 6: vt = VoiceType.Robot1; break;
-                        case 7: vt = VoiceType.Machine1; break;
-                        case 8: vt = VoiceType.Machine2; break;
-                        default: vt = (VoiceType)voiceType; break;
+                    // コマンドに応じた処理
+                    switch (command) {
+                        case "talk":
+                            // 読み上げコマンド
+                            ProcessTalkCommand(jsonData);
+                            break;
+                        case "stop":
+                            // 停止コマンド
+                            Pub.Stop();
+                            Console.WriteLine("読み上げを停止しました");
+                            break;
+                        case "pause":
+                            // 一時停止コマンド
+                            Pub.Pause = true;
+                            Console.WriteLine("読み上げを一時停止しました");
+                            break;
+                        case "resume":
+                            // 再開コマンド
+                            Pub.Pause = false;
+                            Console.WriteLine("読み上げを再開しました");
+                            break;
+                        case "skip":
+                            // スキップコマンド
+                            Pub.SkipTalkTask();
+                            Console.WriteLine("現在の読み上げをスキップしました");
+                            break;
+                        default:
+                            // 不明なコマンドの場合は読み上げコマンドとして処理
+                            ProcessTalkCommand(jsonData);
+                            break;
                     }
-
-                    // 読み上げ
-                    Pub.AddTalkTask(text, pitch, volume, speed, vt);
                 }
                 catch (Exception ex) {
                     // エラーログ
                     Console.WriteLine("JSONパースエラー: " + ex.Message);
-                    
-                    // 従来の<bouyomi>形式でも試してみる（後方互換性のため）
-                    String[] delim = { "<bouyomi>" };
-                    String[] param = jsonText.Split(delim, 5, StringSplitOptions.None);
-                    if (param.Length == 5) {
-                        VoiceType vt = VoiceType.Default;
-                        switch (int.Parse(param[3])) {
-                            case 0: vt = VoiceType.Default; break;
-                            case 1: vt = VoiceType.Female1; break;
-                            case 2: vt = VoiceType.Female2; break;
-                            case 3: vt = VoiceType.Male1; break;
-                            case 4: vt = VoiceType.Male2; break;
-                            case 5: vt = VoiceType.Imd1; break;
-                            case 6: vt = VoiceType.Robot1; break;
-                            case 7: vt = VoiceType.Machine1; break;
-                            case 8: vt = VoiceType.Machine2; break;
-                            default: vt = (VoiceType)int.Parse(param[3]); break;
-                        }
-                        Pub.AddTalkTask(param[4], int.Parse(param[0]), int.Parse(param[1]), int.Parse(param[2]), vt);
-                    }
                 }
+            }
+
+            // 読み上げコマンドの処理
+            private void ProcessTalkCommand(Dictionary<string, object> jsonData) {
+                // 各パラメータを取得
+                int speed = -1;
+                int pitch = -1;
+                int volume = -1;
+                int voiceType = 0;
+                string text = string.Empty;
+
+                if (jsonData.ContainsKey("speed")) {
+                    speed = Convert.ToInt32(jsonData["speed"]);
+                }
+                if (jsonData.ContainsKey("pitch")) {
+                    pitch = Convert.ToInt32(jsonData["pitch"]);
+                }
+                if (jsonData.ContainsKey("volume")) {
+                    volume = Convert.ToInt32(jsonData["volume"]);
+                }
+                if (jsonData.ContainsKey("voiceType")) {
+                    voiceType = Convert.ToInt32(jsonData["voiceType"]);
+                }
+                if (jsonData.ContainsKey("text")) {
+                    text = jsonData["text"].ToString();
+                }
+
+                // VoiceTypeを設定
+                VoiceType vt = VoiceType.Default;
+                switch (voiceType) {
+                    case 0: vt = VoiceType.Default; break;
+                    case 1: vt = VoiceType.Female1; break;
+                    case 2: vt = VoiceType.Female2; break;
+                    case 3: vt = VoiceType.Male1; break;
+                    case 4: vt = VoiceType.Male2; break;
+                    case 5: vt = VoiceType.Imd1; break;
+                    case 6: vt = VoiceType.Robot1; break;
+                    case 7: vt = VoiceType.Machine1; break;
+                    case 8: vt = VoiceType.Machine2; break;
+                    default: vt = (VoiceType)voiceType; break;
+                }
+
+                // 読み上げ
+                Pub.AddTalkTask(text, pitch, volume, speed, vt);
             }
 
             // WebSocketのデータをデコード
