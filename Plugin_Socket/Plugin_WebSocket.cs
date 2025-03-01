@@ -261,35 +261,42 @@ namespace Plugin_WebSocket {
                 byte[] request = new byte[bsize];
                 mClient.Receive(request);
 
-                // マスク解除
-                Int64 payloadLen = request[1] & 0x7F;
-                bool masked = ((request[1] & 0x80) == 0x80);
-                int hp = 2;
-                switch (payloadLen)
-                {
-                    case 126: payloadLen = request[2] * 0x100 + request[3]; hp += 2; break;
-                    case 127: payloadLen = request[2] * 0x100000000000000 + request[3] * 0x1000000000000 + request[4] * 0x10000000000 + request[5] * 0x100000000 + request[6] * 0x1000000 + request[7] * 0x10000 + request[8] * 0x100 + request[9]; hp += 8; break;
-                    default:  break;
-                }
-                if (masked)
-                {
-                    for (int i = 0; i < payloadLen; i++)
-                    {
-                        request[hp + 4 + i] ^= request[hp + (i % 4)];
-                        //Console.WriteLine(buffer[6 + i]);
-                    }
-                    hp += 4;
+                // WebSocketデータをデコード
+                string jsonText = DecodeWebSocketData(request, bsize);
+                if (string.IsNullOrEmpty(jsonText)) {
+                    return;
                 }
 
-                // 受け取ったリクエストの解析
-                String fromClient = Encoding.UTF8.GetString(request, hp, (int)payloadLen);
-                
-                String[] delim = { "<bouyomi>" };
-                String[] param = fromClient.Split(delim, 5, StringSplitOptions.None);
-                VoiceType vt = VoiceType.Default;
-                if (param.Length == 5)
-                {
-                    switch (int.Parse(param[3])) {
+                try {
+                    // JSONデータをパース
+                    Dictionary<string, object> jsonData = ParseJson(jsonText);
+
+                    // 各パラメータを取得
+                    int speed = -1;
+                    int pitch = -1;
+                    int volume = -1;
+                    int voiceType = 0;
+                    string text = string.Empty;
+
+                    if (jsonData.ContainsKey("speed")) {
+                        speed = Convert.ToInt32(jsonData["speed"]);
+                    }
+                    if (jsonData.ContainsKey("pitch")) {
+                        pitch = Convert.ToInt32(jsonData["pitch"]);
+                    }
+                    if (jsonData.ContainsKey("volume")) {
+                        volume = Convert.ToInt32(jsonData["volume"]);
+                    }
+                    if (jsonData.ContainsKey("voiceType")) {
+                        voiceType = Convert.ToInt32(jsonData["voiceType"]);
+                    }
+                    if (jsonData.ContainsKey("text")) {
+                        text = jsonData["text"].ToString();
+                    }
+
+                    // VoiceTypeを設定
+                    VoiceType vt = VoiceType.Default;
+                    switch (voiceType) {
                         case 0: vt = VoiceType.Default; break;
                         case 1: vt = VoiceType.Female1; break;
                         case 2: vt = VoiceType.Female2; break;
@@ -299,13 +306,232 @@ namespace Plugin_WebSocket {
                         case 6: vt = VoiceType.Robot1; break;
                         case 7: vt = VoiceType.Machine1; break;
                         case 8: vt = VoiceType.Machine2; break;
-                        default: vt = (VoiceType)int.Parse(param[3]); break;
+                        default: vt = (VoiceType)voiceType; break;
+                    }
+
+                    // 読み上げ
+                    Pub.AddTalkTask(text, pitch, volume, speed, vt);
+                }
+                catch (Exception ex) {
+                    // エラーログ
+                    Console.WriteLine("JSONパースエラー: " + ex.Message);
+                    
+                    // 従来の<bouyomi>形式でも試してみる（後方互換性のため）
+                    String[] delim = { "<bouyomi>" };
+                    String[] param = jsonText.Split(delim, 5, StringSplitOptions.None);
+                    if (param.Length == 5) {
+                        VoiceType vt = VoiceType.Default;
+                        switch (int.Parse(param[3])) {
+                            case 0: vt = VoiceType.Default; break;
+                            case 1: vt = VoiceType.Female1; break;
+                            case 2: vt = VoiceType.Female2; break;
+                            case 3: vt = VoiceType.Male1; break;
+                            case 4: vt = VoiceType.Male2; break;
+                            case 5: vt = VoiceType.Imd1; break;
+                            case 6: vt = VoiceType.Robot1; break;
+                            case 7: vt = VoiceType.Machine1; break;
+                            case 8: vt = VoiceType.Machine2; break;
+                            default: vt = (VoiceType)int.Parse(param[3]); break;
+                        }
+                        Pub.AddTalkTask(param[4], int.Parse(param[0]), int.Parse(param[1]), int.Parse(param[2]), vt);
                     }
                 }
+            }
 
-                // 読み上げ
-                Pub.AddTalkTask(param[4], int.Parse(param[0]), int.Parse(param[1]), int.Parse(param[2]), vt);
+            // WebSocketのデータをデコード
+            private string DecodeWebSocketData(byte[] buffer, int size) {
+                try {
+                    if (size < 2) {
+                        return "";
+                    }
+
+                    // 基本情報取得
+                    bool fin = (buffer[0] & 0x80) != 0;    // 終了フレームかどうか
+                    int opcode = buffer[0] & 0x0F;         // opcode
+                    bool mask = (buffer[1] & 0x80) != 0;   // マスクされているかどうか
+                    int len = buffer[1] & 0x7F;            // ペイロード長
+                    int pos = 2;                           // ヘッダサイズ
+
+                    // 長さが126以上の場合
+                    if (len == 126) {
+                        len = (buffer[2] << 8) + buffer[3];
+                        pos = 4;
+                    }
+                    else if (len == 127) {
+                        // 64ビット長の処理
+                        long longLen = 0;
+                        for (int i = 0; i < 8; i++) {
+                            longLen = (longLen << 8) | buffer[2 + i];
+                        }
+                        
+                        // int.MaxValueを超える場合は処理できない
+                        if (longLen > Int32.MaxValue) {
+                            Console.WriteLine("メッセージが大きすぎます: " + longLen + " バイト");
+                            return "";
+                        }
+                        
+                        len = (int)longLen;
+                        pos = 10; // 2 + 8バイト
+                    }
+
+                    // マスクキー取得
+                    byte[] maskKey = null;
+                    if (mask) {
+                        maskKey = new byte[4];
+                        for (int i = 0; i < 4; i++) {
+                            maskKey[i] = buffer[pos + i];
+                        }
+                        pos += 4;
+                    }
+
+                    // ペイロード取得
+                    byte[] payload = new byte[len];
+                    for (int i = 0; i < len; i++) {
+                        if (pos + i < size) {
+                            payload[i] = buffer[pos + i];
+                        }
+                        else {
+                            // サイズが足りない
+                            Console.WriteLine("不完全なメッセージ: 必要なサイズ " + len + " バイト, 実際のサイズ " + (size - pos) + " バイト");
+                            return "";
+                        }
+                    }
+
+                    // マスク解除
+                    if (mask) {
+                        for (int i = 0; i < len; i++) {
+                            payload[i] = (byte)(payload[i] ^ maskKey[i % 4]);
+                        }
+                    }
+
+                    // テキストの場合のみ処理
+                    if (opcode == 1) {
+                        return Encoding.UTF8.GetString(payload);
+                    }
+                }
+                catch (Exception ex) {
+                    // エラーログ
+                    Console.WriteLine("WebSocketデータのデコードエラー: " + ex.Message);
+                }
+                return "";
+            }
+
+            // JSONデータをパースする簡易メソッド（.NET 2.0互換）
+            private Dictionary<string, object> ParseJson(string jsonText) {
+                Dictionary<string, object> result = new Dictionary<string, object>();
                 
+                // 最も単純なJSONパース（完全なJSONパーサーではありません）
+                try {
+                    // 中括弧を削除
+                    jsonText = jsonText.Trim();
+                    if (jsonText.StartsWith("{") && jsonText.EndsWith("}")) {
+                        jsonText = jsonText.Substring(1, jsonText.Length - 2);
+                    } else {
+                        return result;
+                    }
+                    
+                    // キーと値のペアを解析
+                    bool inQuotes = false;
+                    bool escaped = false;
+                    StringBuilder keyBuilder = new StringBuilder();
+                    StringBuilder valueBuilder = new StringBuilder();
+                    bool buildingKey = true;
+                    
+                    for (int i = 0; i < jsonText.Length; i++) {
+                        char c = jsonText[i];
+                        
+                        // エスケープシーケンスの処理
+                        if (escaped) {
+                            if (buildingKey) {
+                                keyBuilder.Append(c);
+                            } else {
+                                valueBuilder.Append(c);
+                            }
+                            escaped = false;
+                            continue;
+                        }
+                        
+                        // バックスラッシュはエスケープ文字
+                        if (c == '\\') {
+                            escaped = true;
+                            continue;
+                        }
+                        
+                        // 引用符の処理
+                        if (c == '"') {
+                            inQuotes = !inQuotes;
+                            continue;
+                        }
+                        
+                        // キーと値の区切り
+                        if (!inQuotes && c == ':' && buildingKey) {
+                            buildingKey = false;
+                            continue;
+                        }
+                        
+                        // 次のキーと値のペアへ
+                        if (!inQuotes && c == ',') {
+                            string key = keyBuilder.ToString().Trim().Trim('"');
+                            string value = valueBuilder.ToString().Trim().Trim('"');
+                            
+                            // 値を適切な型に変換
+                            if (value == "true") {
+                                result[key] = true;
+                            } else if (value == "false") {
+                                result[key] = false;
+                            } else if (value == "null") {
+                                result[key] = null;
+                            } else {
+                                // 数値かどうか確認
+                                int intValue;
+                                if (int.TryParse(value, out intValue)) {
+                                    result[key] = intValue;
+                                } else {
+                                    result[key] = value;
+                                }
+                            }
+                            
+                            keyBuilder.Length = 0;
+                            valueBuilder.Length = 0;
+                            buildingKey = true;
+                            continue;
+                        }
+                        
+                        // 文字を追加
+                        if (buildingKey) {
+                            keyBuilder.Append(c);
+                        } else {
+                            valueBuilder.Append(c);
+                        }
+                    }
+                    
+                    // 最後のキーと値のペアを処理
+                    if (keyBuilder.Length > 0) {
+                        string key = keyBuilder.ToString().Trim().Trim('"');
+                        string value = valueBuilder.ToString().Trim().Trim('"');
+                        
+                        // 値を適切な型に変換
+                        if (value == "true") {
+                            result[key] = true;
+                        } else if (value == "false") {
+                            result[key] = false;
+                        } else if (value == "null") {
+                            result[key] = null;
+                        } else {
+                            // 数値かどうか確認
+                            int intValue;
+                            if (int.TryParse(value, out intValue)) {
+                                result[key] = intValue;
+                            } else {
+                                result[key] = value;
+                            }
+                        }
+                    }
+                } catch (Exception ex) {
+                    Console.WriteLine("JSONパースエラー: " + ex.Message);
+                }
+                
+                return result;
             }
         }
 
