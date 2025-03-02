@@ -31,7 +31,7 @@ namespace Plugin_WebSocket {
         #region ■IPluginメンバの実装
 
         public string           Name            { get { return "WebSocketサーバー"; } }
-        public string           Version         { get { return "2013/05/15版"; } }
+        public string           Version         { get { return "2025/03/02版"; } }
         public string           Caption         { get { return "WebSocketからの読み上げリクエストを受け付けます。"; } } 
         public ISettingFormData SettingFormData { get { return _settingFormData; } }
 
@@ -285,26 +285,23 @@ namespace Plugin_WebSocket {
                             break;
                         case "stop":
                             // 停止コマンド
-                            Pub.Stop();
-                            Console.WriteLine("読み上げを停止しました");
+                            Pub.ClearTalkTasks();
                             break;
                         case "pause":
                             // 一時停止コマンド
                             Pub.Pause = true;
-                            Console.WriteLine("読み上げを一時停止しました");
                             break;
                         case "resume":
                             // 再開コマンド
                             Pub.Pause = false;
-                            Console.WriteLine("読み上げを再開しました");
                             break;
                         case "skip":
                             // スキップコマンド
                             Pub.SkipTalkTask();
-                            Console.WriteLine("現在の読み上げをスキップしました");
                             break;
                         default:
                             // 不明なコマンドの場合は読み上げコマンドとして処理
+                            Pub.AddTalkTask("不明なコマンド: " + command + " を読み上げコマンドとして処理します", -1, -1, VoiceType.Default);
                             ProcessTalkCommand(jsonData);
                             break;
                     }
@@ -441,7 +438,6 @@ namespace Plugin_WebSocket {
             private Dictionary<string, object> ParseJson(string jsonText) {
                 Dictionary<string, object> result = new Dictionary<string, object>();
                 
-                // 最も単純なJSONパース（完全なJSONパーサーではありません）
                 try {
                     // 中括弧を削除
                     jsonText = jsonText.Trim();
